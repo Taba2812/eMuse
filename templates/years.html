@@ -1,0 +1,346 @@
+"<!doctype html>
+<html lang="en">
+
+<head>
+    <meta charset="UTF-8">
+    <title>Songs by Year</title>
+    <style>
+        body {
+            font-family: Arial, sans-serif;
+            margin: 0;
+            padding: 0;
+        }
+
+        .year-bar {
+            display: flex;
+            justify-content: space-around;
+            align-items: center;
+            flex-wrap: nowrap;
+            width: 100%;
+            background-color: #f0f0f0;
+            padding: 15px 0;
+            position: fixed;
+            top: 0;
+            left: 0;
+            box-shadow: 0 2px 5px rgba(0, 0, 0, 0.1);
+            z-index: 1000;
+        }
+
+        button {
+            padding: 10px 18px;
+            font-size: 16px;
+            border-radius: 6px;
+            border: none;
+            background-color: #007BFF;
+            color: white;
+            cursor: pointer;
+            transition: background-color 0.2s;
+        }
+
+        button:hover {
+            background-color: #0056b3;
+        }
+
+        .active {
+            background-color: #0056b3;
+        }
+
+        .content {
+            margin-top: 90px;
+            text-align: center;
+            padding: 20px;
+        }
+
+        .song-card {
+            display: inline-block;
+            background: #ffffff;
+            border-radius: 12px;
+            box-shadow: 0 4px 10px rgba(0, 0, 0, 0.1);
+            padding: 15px 25px;
+            margin: 10px;
+            text-align: left;
+            width: 250px;
+        }
+
+        .song-card h3 {
+            margin: 0;
+            font-size: 18px;
+            color: #333;
+        }
+
+        .song-card p {
+            margin: 5px 0 0;
+            color: #666;
+        }
+    </style>
+</head>
+
+<body>
+    <!-- Year selection bar -->
+    <div class="year-bar">
+        {% for year in years %}
+        <form action="/{{ year }}" method="get">
+            <button type="submit" class="{% if selected_year == year %}active{% endif %}">
+                {{ year }}
+            </button>
+        </form>
+        {% endfor %}
+    </div>
+
+    <!-- Page content -->
+    <div class="content">
+        <h1>Songs from {{ selected_year }}</h1>
+        <div id="songs-container">Loading songs...</div>
+    </div>
+
+    <div id="tooltip" style="
+        position: absolute;
+        background: rgba(50, 50, 50, 0.9);
+        color: #fff;
+        padding: 8px 12px;
+        border-radius: 8px;
+        pointer-events: none;
+        font-size: 14px;
+        display: none;
+        white-space: nowrap;
+        z-index: 2000;
+    "></div>
+
+    <script>
+        const year = {{ selected_year }};
+        fetch(`/api/${year}`)
+            .then(response => response.json())
+            .then(data => {
+                const container = document.getElementById('songs-container');
+                container.innerHTML = '';
+
+                if (data.length === 0) {
+                    container.innerHTML = '<p>No songs found for this year.</p>';
+                    return;
+                }
+
+                const wrapper = document.createElement("div");
+                wrapper.style.display = "flex";
+                wrapper.style.alignItems = "flex-start";
+                wrapper.style.justifyContent = "center";
+                wrapper.style.gap = "30px";
+                container.appendChild(wrapper);
+
+                const legendDiv = document.createElement("div");
+                legendDiv.style.display = "flex";
+                legendDiv.style.flexDirection = "column";
+                legendDiv.style.alignItems = "flex-start";
+                legendDiv.style.background = "#fff";
+                legendDiv.style.border = "1px solid #ddd";
+                legendDiv.style.borderRadius = "10px";
+                legendDiv.style.padding = "15px 20px";
+                legendDiv.style.boxShadow = "0 2px 6px rgba(0,0,0,0.1)";
+                legendDiv.style.fontSize = "14px";
+                legendDiv.style.color = "#333";
+                legendDiv.style.minWidth = "160px";
+                wrapper.appendChild(legendDiv);
+
+                const title = document.createElement("div");
+                title.textContent = "Legend";
+                title.style.fontWeight = "bold";
+                title.style.fontSize = "16px";
+                title.style.marginBottom = "10px";
+                legendDiv.appendChild(title);
+
+                const xInfo = document.createElement("div");
+                xInfo.innerHTML = "<strong>X-axis:</strong> Length (seconds)";
+                xInfo.style.marginBottom = "4px";
+                legendDiv.appendChild(xInfo);
+
+                const yInfo = document.createElement("div");
+                yInfo.innerHTML = "<strong>Y-axis:</strong> Tempo (BPM)";
+                yInfo.style.marginBottom = "4px";
+                legendDiv.appendChild(yInfo);
+
+                const sizeInfo = document.createElement("div");
+                sizeInfo.innerHTML = "<strong>Circle size:</strong> Energy (0–100)";
+                sizeInfo.style.marginBottom = "10px";
+                legendDiv.appendChild(sizeInfo);
+
+                const tooltip = document.getElementById('tooltip');
+
+                const maxLength = Math.ceil(Math.max(...data.map(s => parseFloat(s.Length) || 0)));
+                const maxTempo = Math.ceil(Math.max(...data.map(s => parseFloat(s.Tempo) || 0)) / 50) * 50;
+
+                const width = 700, height = 400, margin = 50;
+
+                const keyColors = {
+                    "C": "#e6194b", "C#": "#f58231",
+                    "D": "#ffe119", "D#": "#bfef45",
+                    "E": "#3cb44b",
+                    "F": "#42d4f4", "F#": "#4363d8",
+                    "G": "#911eb4", "G#": "#f032e6",
+                    "A": "#9a6324", "A#": "#000000",
+                    "B": "#ffffff",
+                    "": "#cccccc", null: "#cccccc", undefined: "#cccccc"
+                };
+
+                const uniqueKeys = [...new Set(
+                    data
+                        .map(s => (s.Key ? String(s.Key).trim() : ""))
+                        .filter(k => k !== "")
+                )];
+
+
+                const orderedKeys = ["C", "C#", "D", "D#", "E", "F", "F#", "G", "G#", "A", "A#", "B"];
+                const sortedKeys = orderedKeys.filter(k => uniqueKeys.includes(k));
+
+                sortedKeys.forEach(key => {
+                    const row = document.createElement("div");
+                    row.style.display = "flex";
+                    row.style.alignItems = "center";
+                    row.style.marginTop = "6px";
+
+                    const swatch = document.createElement("span");
+                    swatch.style.display = "inline-block";
+                    swatch.style.width = "16px";
+                    swatch.style.height = "16px";
+                    swatch.style.borderRadius = "4px";
+                    swatch.style.marginRight = "8px";
+                    swatch.style.background = keyColors[key] || "#ccc";
+                    swatch.style.border = "1px solid #666";
+
+                    const label = document.createElement("span");
+                    label.textContent = key;
+
+                    row.appendChild(swatch);
+                    row.appendChild(label);
+                    legendDiv.appendChild(row);
+                });
+
+
+                // Create SVG canvas
+                const svg = document.createElementNS("http://www.w3.org/2000/svg", "svg");
+                svg.setAttribute("width", width + margin * 2);
+                svg.setAttribute("height", height + margin * 2);
+                svg.style.background = "#808080";
+                svg.style.borderRadius = "10px";
+                wrapper.appendChild(svg);
+
+                // Scales
+                const xScale = len => margin + (len / maxLength) * width;
+                const yScale = bpm => height + margin - (bpm / maxTempo) * height;
+
+                // Axes
+                function drawAxis(x1, y1, x2, y2, minVal, maxVal, orientation = "x") {
+                    const line = document.createElementNS("http://www.w3.org/2000/svg", "line");
+                    line.setAttribute("x1", x1);
+                    line.setAttribute("y1", y1);
+                    line.setAttribute("x2", x2);
+                    line.setAttribute("y2", y2);
+                    line.setAttribute("stroke", "#333");
+                    svg.appendChild(line);
+
+                    const minText = document.createElementNS("http://www.w3.org/2000/svg", "text");
+                    const maxText = document.createElementNS("http://www.w3.org/2000/svg", "text");
+
+                    minText.textContent = minVal;
+                    maxText.textContent = maxVal;
+
+                    minText.style.fontSize = "12px";
+                    maxText.style.fontSize = "12px";
+                    minText.style.fill = "#333";
+                    maxText.style.fill = "#333";
+
+                    if (orientation === "x") {
+                        // Place tick labels for X-axis
+                        minText.setAttribute("x", x1 - 10);
+                        minText.setAttribute("y", y1 + 20);
+                        maxText.setAttribute("x", x2 - 10);
+                        maxText.setAttribute("y", y2 + 20);
+                    } else {
+                        // Place tick labels for Y-axis
+                        minText.setAttribute("x", x1 - 30);
+                        minText.setAttribute("y", y1);
+                        maxText.setAttribute("x", x2 - 30);
+                        maxText.setAttribute("y", y2 + 5);
+                    }
+
+                    svg.appendChild(minText);
+                    svg.appendChild(maxText);
+                }
+
+                // X-axis (Length)
+                drawAxis(margin, height + margin, width + margin, height + margin, 0, maxLength, "x");
+
+                // Y-axis (Tempo)
+                drawAxis(margin, height + margin, margin, margin, 0, maxTempo, "y");
+
+                // Tooltip events
+                function showTooltip(event, song) {
+                    const minutes = Math.floor(song.Length / 60);
+                    const seconds = song.Length % 60;
+                    tooltip.innerHTML = `
+                        <strong>${song.Song}</strong><br>
+                        Album: ${song.Album}<br>
+                        Length: ${minutes}:${seconds.toString().padStart(2, '0')}<br>
+                        Tempo: ${song.Tempo}<br>
+                        Key: ${song.Key || 'N/A'}<br>
+                        Energy: ${song.Energy || 'N/A'}
+                    `;
+                    tooltip.style.left = (event.pageX + 10) + "px";
+                    tooltip.style.top = (event.pageY - 20) + "px";
+                    tooltip.style.display = "block";
+                }
+
+                function moveTooltip(event) {
+                    tooltip.style.left = (event.pageX + 10) + "px";
+                    tooltip.style.top = (event.pageY - 20) + "px";
+                }
+
+                function hideTooltip() {
+                    tooltip.style.display = "none";
+                }
+
+                // Draw each song as a shape
+                data.forEach(song => {
+                    const len = parseFloat(song.Length);
+                    const tempo = parseFloat(song.Tempo);
+                    const key = song?.Key ?? '';
+                    const energy = parseFloat(song.Energy);
+                    const x = xScale(len);
+                    const y = yScale(tempo);
+                    const color = keyColors[key] || "#cccccc";
+
+                    if (isNaN(len) || isNaN(tempo)) return;
+
+                    let shape;
+
+                    if (isNaN(energy)) {
+                        shape = document.createElementNS("http://www.w3.org/2000/svg", "rect");
+                        shape.setAttribute("x", x - 4);
+                        shape.setAttribute("y", y - 4);
+                        shape.setAttribute("width", 15);
+                        shape.setAttribute("height", 15);
+                    } else {
+                        const radius = 5 + (energy / 100) * 15;
+                        shape = document.createElementNS("http://www.w3.org/2000/svg", "circle");
+                        shape.setAttribute("cx", x);
+                        shape.setAttribute("cy", y);
+                        shape.setAttribute("r", radius);
+                    }
+
+                    shape.setAttribute("fill", color);
+                    shape.style.cursor = "pointer";
+
+                    // Tooltip events
+                    shape.addEventListener("mouseenter", e => showTooltip(e, song));
+                    shape.addEventListener("mousemove", moveTooltip);
+                    shape.addEventListener("mouseleave", hideTooltip);
+
+                    svg.appendChild(shape);
+                });
+            })
+            .catch(() => {
+                document.getElementById('songs-container').innerHTML = '<p>Error loading songs.</p>';
+            });
+    </script>
+
+</body>
+
+</html>"
