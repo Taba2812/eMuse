@@ -2,7 +2,7 @@ from flask import Flask, jsonify, render_template
 from flask_pymongo import PyMongo # type: ignore
 
 app = Flask(__name__)
-app.config["MONGO_URI"] = "mongodb+srv://earlgibe:mCUVEYOmjdBeifOg@earlgibe.mmluw.mongodb.net/eMuse?retryWrites=true&w=majority"
+app.config["MONGO_URI"] = "mongodb+srv://earlgibe:[PASSWORD]@earlgibe.mmluw.mongodb.net/eMuse?retryWrites=true&w=majority"
 
 mongo = PyMongo(app)
 db = mongo.db
